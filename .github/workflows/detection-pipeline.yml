@@ -1,0 +1,180 @@
+name: Detection-as-Code Pipeline
+
+on:
+  push:
+    paths:
+      - 'rules/**/*.yml'
+  pull_request:
+    paths:
+      - 'rules/**/*.yml'
+
+jobs:
+
+  # ─────────────────────────────────────────────
+  # Job 1: Validate Sigma Rule Syntax
+  # ─────────────────────────────────────────────
+  validate-sigma-rules:
+    name: Validate Sigma Rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install sigma-cli
+        run: pip install sigma-cli
+
+      - name: Validate all Sigma rules
+        run: |
+          echo "🔍 Validating Sigma rules..."
+          find rules/ -name "*.yml" | while read rule; do
+            sigma check "$rule" && echo "✅ $rule" || echo "❌ $rule"
+          done
+
+      - name: Count rules by severity
+        run: |
+          echo "📊 Rule Statistics:"
+          echo "  Critical: $(grep -r 'level: critical' rules/ | wc -l)"
+          echo "  High:     $(grep -r 'level: high' rules/ | wc -l)"
+          echo "  Medium:   $(grep -r 'level: medium' rules/ | wc -l)"
+          echo "  Low:      $(grep -r 'level: low' rules/ | wc -l)"
+
+  # ─────────────────────────────────────────────
+  # Job 2: Check for Required Fields
+  # ─────────────────────────────────────────────
+  quality-checks:
+    name: Rule Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Run quality check script
+        run: |
+          python3 - <<'EOF'
+          import yaml
+          import os
+          import sys
+
+          REQUIRED_FIELDS = ["title", "id", "status", "description", "author", "tags", "detection", "level"]
+          errors = []
+
+          for root, dirs, files in os.walk("rules/"):
+              for file in files:
+                  if not file.endswith(".yml"):
+                      continue
+                  path = os.path.join(root, file)
+                  try:
+                      with open(path) as f:
+                          docs = list(yaml.safe_load_all(f))
+                      for doc in docs:
+                          if not doc:
+                              continue
+                          for field in REQUIRED_FIELDS:
+                              if field not in doc:
+                                  errors.append(f"❌ {path}: Missing required field '{field}'")
+                          tags = doc.get("tags", [])
+                          has_mitre = any("attack." in str(t) for t in tags)
+                          if not has_mitre:
+                              errors.append(f"⚠️  {path}: No MITRE ATT&CK tag found")
+                  except Exception as e:
+                      errors.append(f"❌ {path}: Parse error - {e}")
+
+          if errors:
+              print("\n".join(errors))
+              sys.exit(1)
+          else:
+              print("✅ All rules passed quality checks!")
+          EOF
+
+  # ─────────────────────────────────────────────
+  # Job 3: Convert to Splunk SPL (on merge to main)
+  # ─────────────────────────────────────────────
+  convert-to-splunk:
+    name: Convert Rules to Splunk SPL
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [validate-sigma-rules, quality-checks]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install sigma-cli with Splunk backend
+        run: pip install sigma-cli pySigma-backend-splunk
+
+      - name: Convert Sigma rules to Splunk SPL
+        run: |
+          mkdir -p output/splunk
+          find rules/ -name "*.yml" | while read rule; do
+            base=$(basename "$rule" .yml)
+            sigma convert -t splunk "$rule" > "output/splunk/${base}.spl" 2>/dev/null && \
+              echo "✅ Converted: $rule" || \
+              echo "⚠️  Skipped: $rule"
+          done
+
+      - name: Upload converted rules as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: splunk-rules
+          path: output/splunk/
+
+  # ─────────────────────────────────────────────
+  # Job 4: Generate Rule Report
+  # ─────────────────────────────────────────────
+  generate-report:
+    name: Generate Detection Report
+    runs-on: ubuntu-latest
+    needs: [quality-checks]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Generate Markdown report
+        run: |
+          python3 - <<'EOF'
+          import yaml, os
+          from datetime import datetime
+
+          rules = []
+          for root, dirs, files in os.walk("rules/"):
+              for file in files:
+                  if not file.endswith(".yml"):
+                      continue
+                  path = os.path.join(root, file)
+                  with open(path) as f:
+                      for doc in yaml.safe_load_all(f):
+                          if doc and "title" in doc:
+                              rules.append(doc)
+
+          rules.sort(key=lambda r: {"critical":0,"high":1,"medium":2,"low":3}.get(r.get("level","low"),9))
+
+          lines = [
+              "# Detection Rules Report",
+              f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+              f"Total rules: {len(rules)}\n",
+              "| Title | Level | Status | MITRE |",
+              "|---|---|---|---|"
+          ]
+
+          for r in rules:
+              tags = [t for t in r.get("tags",[]) if t.startswith("attack.t")]
+              mitre = ", ".join(tags[:2]) if tags else "N/A"
+              lines.append(f"| {r.get('title','N/A')} | {r.get('level','N/A').upper()} | {r.get('status','N/A')} | {mitre} |")
+
+          with open("RULES_REPORT.md", "w") as f:
+              f.write("\n".join(lines))
+          print("✅ Report generated: RULES_REPORT.md")
+          EOF
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: detection-report
+          path: RULES_REPORT.md
