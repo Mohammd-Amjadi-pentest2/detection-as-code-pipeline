@@ -27,4 +27,4 @@ This pipeline brings **software engineering practices** to detection:
 
 ## 🔗 Related Projects
 
-- [sigma-siem-rules](https://github.com/arash-123456/sigma-siem-rules) — The detection rules validated by this pipeline
+- [sigma-siem-rules](https://github.com/pentest2/sigma-siem-rules) — The detection rules validated by this pipeline
