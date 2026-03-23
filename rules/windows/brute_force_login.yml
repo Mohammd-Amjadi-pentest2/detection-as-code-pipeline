@@ -1,0 +1,32 @@
+title: Windows Brute Force Login Attempt
+id: b3c2d4e5-f6a7-8901-bcde-f23456789012
+status: stable
+description: Detects multiple failed login attempts to Windows systems, indicating a possible brute force attack against user accounts.
+author: Mohammd-Amjadi-pentest2
+date: 2026/03/19
+tags:
+    - attack.credential_access
+        - attack.t1110
+            - attack.t1110.001
+            logsource:
+                product: windows
+                    service: security
+                    detection:
+                        selection:
+                                EventID: 4625
+                                        LogonType:
+                                                    - 2
+                                                                - 3
+                                                                            - 10
+                                                                                condition: selection | count() by TargetUserName > 5
+                                                                                timeframe: 5m
+                                                                                falsepositives:
+                                                                                    - Users who frequently mistype their passwords
+                                                                                        - Automated testing tools
+                                                                                            - Password synchronization failures
+                                                                                            level: medium
+                                                                                            fields:
+                                                                                                - TargetUserName
+                                                                                                    - IpAddress
+                                                                                                        - LogonType
+                                                                                                            - WorkstationName
