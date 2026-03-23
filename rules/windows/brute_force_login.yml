@@ -14,7 +14,7 @@ logsource:
 detection:
   selection:
     EventID: 4625
-  condition: selection | count() by TargetUserName > 5
+  condition: 'selection | count() by TargetUserName > 5'
 timeframe: 5m
 falsepositives:
   - Users who frequently mistype their passwords
