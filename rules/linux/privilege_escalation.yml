@@ -13,21 +13,14 @@ logsource:
   service: auth
 detection:
   selection_sudo:
-    process.name: sudo
-    process.args|contains:
-      - '/bin/bash'
-      - '/bin/sh'
-      - 'chmod 777'
-      - 'chmod +s'
-      - 'chown root'
+    CommandLine|contains:
+      - 'sudo /bin/bash'
+      - 'sudo /bin/sh'
+      - 'sudo chmod 777'
+      - 'sudo chmod +s'
+      - 'sudo chown root'
   selection_suid:
-    process.name|in:
-      - 'find'
-      - 'python'
-      - 'python3'
-      - 'perl'
-      - 'ruby'
-    process.args|contains:
+    CommandLine|contains:
       - '-exec /bin/sh'
       - '-exec bash'
       - 'os.system'
