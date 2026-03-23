@@ -14,15 +14,15 @@ logsource:
   product: windows
 detection:
   selection:
-    Image|endswith:
+    'Image|endswith':
       - '\\powershell.exe'
       - '\\pwsh.exe'
-    CommandLine|contains:
+    'CommandLine|contains':
       - ' -EncodedCommand '
       - ' -enc '
       - ' -ec '
   filter_legitimate:
-    CommandLine|contains:
+    'CommandLine|contains':
       - 'chocolatey'
       - 'WindowsPowerShell'
   condition: selection and not filter_legitimate
