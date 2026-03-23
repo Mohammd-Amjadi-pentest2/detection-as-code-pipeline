@@ -1,0 +1,44 @@
+title: Linux Sudo Privilege Escalation
+id: c4d3e5f6-a7b8-9012-cdef-345678901234
+status: stable
+description: Detects attempts to escalate privileges using sudo on Linux systems, particularly with unusual commands or by users not typically using sudo.
+author: Mohammd-Amjadi-pentest2
+date: 2026/03/19
+tags:
+    - attack.privilege_escalation
+        - attack.t1548
+            - attack.t1548.003
+            logsource:
+                product: linux
+                    service: auth
+                    detection:
+                        selection_sudo:
+                                process.name: sudo
+                                        process.args|contains:
+                                                    - '/bin/bash'
+                                                                - '/bin/sh'
+                                                                            - 'chmod 777'
+                                                                                        - 'chmod +s'
+                                                                                                    - 'chown root'
+                                                                                                        selection_suid:
+                                                                                                                process.name|in:
+                                                                                                                            - 'find'
+                                                                                                                                        - 'python'
+                                                                                                                                                    - 'python3'
+                                                                                                                                                                - 'perl'
+                                                                                                                                                                            - 'ruby'
+                                                                                                                                                                                    process.args|contains:
+                                                                                                                                                                                                - '-exec /bin/sh'
+                                                                                                                                                                                                            - '-exec bash'
+                                                                                                                                                                                                                        - 'os.system'
+                                                                                                                                                                                                                                    - 'subprocess'
+                                                                                                                                                                                                                                        condition: selection_sudo or selection_suid
+                                                                                                                                                                                                                                        falsepositives:
+                                                                                                                                                                                                                                            - System administrators performing legitimate maintenance
+                                                                                                                                                                                                                                                - Automated configuration management tools (Ansible, Chef)
+                                                                                                                                                                                                                                                level: high
+                                                                                                                                                                                                                                                fields:
+                                                                                                                                                                                                                                                    - user.name
+                                                                                                                                                                                                                                                        - process.name
+                                                                                                                                                                                                                                                            - process.args
+                                                                                                                                                                                                                                                                - process.parent.name
